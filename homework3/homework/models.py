@@ -26,8 +26,14 @@ class Classifier(nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO: implement
-        pass
+        layers = []
+        layers.append(nn.Conv2d(in_channels, 32, kernel_size=3, stride=1))
+        layers.append(nn.BatchNorm2d(32))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(32, num_classes))
+
+        self.network = nn.Sequential(*layers)
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

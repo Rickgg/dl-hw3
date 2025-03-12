@@ -23,17 +23,29 @@ class Classifier(nn.Module):
         """
         super().__init__()
 
-        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
-        self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
+        self.register_buffer("input_mean", torch.tensor(INPUT_MEAN).view(1, 3, 1, 1))
+        self.register_buffer("input_std", torch.tensor(INPUT_STD).view(1, 3, 1, 1))
 
-        layers = []
-        layers.append(nn.Conv2d(in_channels, 32, kernel_size=3, stride=1))
-        layers.append(nn.BatchNorm2d(32))
-        layers.append(nn.ReLU())
-        layers.append(nn.Linear(32, num_classes))
+        # Feature extraction layers
+        self.features = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
 
-        self.network = nn.Sequential(*layers)
+        # Global average pooling
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
 
+        # Fully connected classifier
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64, num_classes)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -43,25 +55,29 @@ class Classifier(nn.Module):
         Returns:
             tensor (b, num_classes) logits
         """
-        # optional: normalizes the input
-        z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
-
-        # TODO: replace with actual forward pass
-        logits = torch.randn(x.size(0), 6)
+        # Normalize input
+        x = (x - self.input_mean) / self.input_std
+        
+        # Extract features
+        features = self.features(x)
+        
+        # Pooling
+        pooled = self.adaptive_pool(features)
+        
+        # Flatten and classify
+        logits = self.classifier(pooled)
 
         return logits
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Used for inference, returns class labels
-        This is what the AccuracyMetric uses as input (this is what the grader will use!).
-        You should not have to modify this function.
+        Used for inference, returns class labels.
 
         Args:
-            x (torch.FloatTensor): image with shape (b, 3, h, w) and vals in [0, 1]
+            x (torch.FloatTensor): image with shape (b, 3, h, w)
 
         Returns:
-            pred (torch.LongTensor): class labels {0, 1, ..., 5} with shape (b, h, w)
+            pred (torch.LongTensor): class labels with shape (b,)
         """
         return self(x).argmax(dim=1)
 

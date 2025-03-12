@@ -44,6 +44,9 @@ def train(
     train_data = load_data("classification_data/train", shuffle=True, batch_size=batch_size, num_workers=2)
     val_data = load_data("classification_data/val", shuffle=False)
 
+    loss_fn = torch.nn.CrossEntropyLoss().to(device)
+
+    optim = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
     global_step = 0
     acc_metric = AccuracyMetric()
@@ -68,12 +71,18 @@ def train(
 
             # TODO: implement training step
             pred = model(img)
-            
-            acc_metric.add(pred, label)
-            
+            label = label.to(pred.device)
+            loss_val = loss_fn(pred, label)
 
+            optim.zero_grad()
+            loss_val.backward()
+            optim.step()
+
+            predictions = model.predict(img)
+            
+            acc_metric.add(predictions, label)
+            
             global_step += 1
-        print(acc_metric.compute())
 
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
@@ -121,7 +130,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--exp_dir", type=str, default="logs")
     parser.add_argument("--model_name", type=str, default="classifier")
-    parser.add_argument("--num_epoch", type=int, default=300)
+    parser.add_argument("--num_epoch", type=int, default=50)
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--seed", type=int, default=2024)
 

@@ -26,26 +26,30 @@ class Classifier(nn.Module):
         self.register_buffer("input_mean", torch.tensor(INPUT_MEAN).view(1, 3, 1, 1))
         self.register_buffer("input_std", torch.tensor(INPUT_STD).view(1, 3, 1, 1))
 
-        # Feature extraction layers
-        self.features = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-        )
+        layers = []
 
-        # Global average pooling
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+        layers.append(nn.Conv2d(in_channels, 64, kernel_size=3, padding=1))
+        layers.append(nn.BatchNorm2d(64))
+        layers.append(nn.ReLU())
+        layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        layers.append(nn.Conv2d(64, 128, kernel_size=3, padding=1))
+        layers.append(nn.BatchNorm2d(128))
+        layers.append(nn.ReLU())
+        layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        layers.append(nn.Conv2d(128, 256, kernel_size=3, padding=1))
+        layers.append(nn.BatchNorm2d(256))
+        layers.append(nn.ReLU())
+        layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        layers.append(nn.Conv2d(256, 512, kernel_size=3, padding=1))
+        layers.append(nn.BatchNorm2d(512))
+        layers.append(nn.ReLU())
 
-        # Fully connected classifier
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(64, num_classes)
-        )
+
+        layers.append(nn.AdaptiveAvgPool2d((1, 1)))
+        layers.append(nn.Flatten())
+        layers.append(nn.Linear(512, num_classes))
+
+        self.network = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -58,14 +62,7 @@ class Classifier(nn.Module):
         # Normalize input
         x = (x - self.input_mean) / self.input_std
         
-        # Extract features
-        features = self.features(x)
-        
-        # Pooling
-        pooled = self.adaptive_pool(features)
-        
-        # Flatten and classify
-        logits = self.classifier(pooled)
+        logits = self.network(x)
 
         return logits
 

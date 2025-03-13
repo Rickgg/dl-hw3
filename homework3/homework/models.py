@@ -79,59 +79,50 @@ class Classifier(nn.Module):
         return self(x).argmax(dim=1)
 
 
-class Detector(torch.nn.Module):
-    def __init__(
-        self,
-        in_channels: int = 3,
-        num_classes: int = 3,
-    ):
-        """
-        A single model that performs segmentation and depth regression
-
-        Args:
-            in_channels: int, number of input channels
-            num_classes: int
-        """
+class Detector(nn.Module):
+    def __init__(self, in_channels: int = 3, num_classes: int = 3):
         super().__init__()
 
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        layers = []
-        layers.append(nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1))
-        layers.append(nn.ReLU())
-        layers.append(nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1))
-        layers.append(nn.ReLU())
-        layers.append(nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1))
-        layers.append(nn.ReLU())
-        layers.append(nn.ConvTranspose2d(16, 16, kernel_size=3, stride=2, padding=1, output_padding=1))
-        layers.append(nn.ReLU())
+        # Encoder (Downsampling)
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
 
-        self.model = nn.Sequential(*layers)
+        # Decoder (Upsampling + Skip Connections)
+        self.dec2 = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU()
+        )
+        self.dec1 = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU()
+        )
 
+        # Output heads
         self.segmentation = nn.Conv2d(16, num_classes, kernel_size=1)
         self.depth = nn.Sequential(nn.Conv2d(16, 1, kernel_size=1), nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Used in training, takes an image and returns raw logits and raw depth.
-        This is what the loss functions use as input.
-
-        Args:
-            x (torch.FloatTensor): image with shape (b, 3, h, w) and vals in [0, 1]
-
-        Returns:
-            tuple of (torch.FloatTensor, torch.FloatTensor):
-                - logits (b, num_classes, h, w)
-                - depth (b, h, w)
-        """
-        # optional: normalizes the input
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        # TODO: replace with actual forward pass
-        pred = self.model(x)
-        logits = self.segmentation(pred)
-        raw_depth = self.depth(pred).squeeze(1)
+        # Encoder
+        enc1_out = self.enc1(z)  # (b, 16, h/2, w/2)
+        enc2_out = self.enc2(enc1_out)  # (b, 32, h/4, w/4)
+
+        # Decoder with skip connections
+        dec2_out = self.dec2(enc2_out)  # (b, 16, h/2, w/2)
+        dec1_out = self.dec1(torch.cat([dec2_out, enc1_out], dim=1))  # (b, 16, h, w)
+
+        logits = self.segmentation(dec1_out)
+        raw_depth = self.depth(dec1_out).squeeze(1)
 
         return logits, raw_depth
 

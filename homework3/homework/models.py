@@ -95,10 +95,18 @@ class Detector(nn.Module):
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
+        self.enc3 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
 
         # Decoder (Upsampling + Skip Connections)
+        self.dec3 = nn.Sequential(
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU()
+        )
         self.dec2 = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(64, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.dec1 = nn.Sequential(
@@ -116,10 +124,12 @@ class Detector(nn.Module):
         # Encoder
         enc1_out = self.enc1(z)  # (b, 16, h/2, w/2)
         enc2_out = self.enc2(enc1_out)  # (b, 32, h/4, w/4)
+        enc3_out = self.enc3(enc2_out)
 
         # Decoder with skip connections
-        dec2_out = self.dec2(enc2_out)  # (b, 16, h/2, w/2)
-        dec1_out = self.dec1(torch.cat([dec2_out, enc1_out], dim=1))  # (b, 16, h, w)
+        dec3_out = self.dec3(enc3_out)  # (b, 32, h/4, w/4)
+        dec2_out = self.dec2(torch.cat([dec3_out, enc2_out], dim=1))  # (b, 16, h/2, w/2)
+        dec1_out = self.dec1(torch.cat([dec2_out, enc1_out], dim=1))
 
         logits = self.segmentation(dec1_out)
         raw_depth = self.depth(dec1_out).squeeze(1)

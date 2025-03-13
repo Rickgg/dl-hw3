@@ -57,23 +57,24 @@ def train(
 
         model.train()
 
-        for img, (seg_target, depth_target) in train_data:
-            img, seg_target, depth_target = img.to(device), seg_target.to(device), depth_target.to(device)
+        for batch in train_data:
+            image, depth, track = batch["image"].to(device), batch["depth"].to(device), batch["track"].to(device)
 
             # TODO: implement training step
-            seg_pred, depth_pred = model(img)
+            seg_pred, depth_pred = model(image)
 
-            seg_pred, depth_pred = model(img)
-            seg_loss = seg_loss_fn(seg_pred, seg_target)
-            depth_loss = depth_loss_fn(depth_pred, depth_target)
-            loss_val = seg_loss + depth_loss
+            print(seg_pred.shape, depth_pred.shape, depth.shape, track.shape)
+
+            seg_loss = seg_loss_fn(seg_pred, track)
+            # depth_loss = depth_loss_fn(depth_pred, depth_target)
+            # loss_val = seg_loss + depth_loss
 
             optim.zero_grad()
-            loss_val.backward()
+            seg_loss.backward()
             optim.step()
 
-            seg_predictions, depth_predictions = model.predict(img)
-            det_metric.add(seg_predictions, seg_target, depth_predictions, depth_target)
+            seg_predictions, depth_predictions = model.predict(image)
+            det_metric.add(seg_predictions, track, depth_predictions, depth)
 
             global_step += 1
 
@@ -81,12 +82,12 @@ def train(
         with torch.inference_mode():
             model.eval()
 
-            for img, (seg_target, depth_target) in val_data:
-                img, seg_target, depth_target = img.to(device), seg_target.to(device), depth_target.to(device)
-                seg_pred, depth_pred = model(img)
-                seg_predictions, depth_predictions = model.predict(img)
+            # for batch in val_data:
+            #     batch = batch.to(device)
+            #     seg_pred, depth_pred = model(batch["image"])
+            #     seg_predictions, depth_predictions = model.predict(img)
                 
-                det_metric.add(seg_predictions, seg_target, depth_predictions, depth_target)
+            #     det_metric.add(seg_predictions, seg_target, depth_predictions, depth_target)
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:

@@ -98,18 +98,19 @@ class Detector(torch.nn.Module):
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
         layers = []
-        layers.append(nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1))
+        layers.append(nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1, dilation=1))
         layers.append(nn.ReLU())
-        layers.append(nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1))
+        layers.append(nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, dilation=1))
         layers.append(nn.ReLU())
-        layers.append(nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1))
+        layers.append(nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1))
         layers.append(nn.ReLU())
-        layers.append(nn.ConvTranspose2d(16, 16, kernel_size=3, stride=2, padding=1))
+        layers.append(nn.ConvTranspose2d(16, 16, kernel_size=3, stride=2, padding=1, output_padding=1))
+        layers.append(nn.ReLU())
 
         self.model = nn.Sequential(*layers)
 
-        self.segmentation = nn.Conv2d(16, num_classes, kernel_size=1)
-        self.depth = nn.Conv2d(16, 1, kernel_size=1)
+        self.segmentation = nn.Conv2d(16, num_classes, kernel_size=3)
+        self.depth = nn.Conv2d(16, 1, kernel_size=3)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -128,9 +129,11 @@ class Detector(torch.nn.Module):
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
         # TODO: replace with actual forward pass
-        pred = self.model(z)
+        pred = self.model(x)
+        print(pred.shape)
         logits = self.segmentation(pred)
-        raw_depth = self.depth(z)
+        print(logits.shape)
+        raw_depth = self.depth(pred).squeeze(1)
 
         return logits, raw_depth
 

@@ -51,6 +51,8 @@ def train(
 
     det_metric = DetectionMetric()
 
+    global_step = 0
+
     # training loop
     for epoch in range(num_epoch):
         det_metric.reset()
@@ -62,8 +64,6 @@ def train(
 
             # TODO: implement training step
             seg_pred, depth_pred = model(image)
-
-            print(seg_pred.shape, depth_pred.shape, depth.shape, track.shape)
 
             seg_loss = seg_loss_fn(seg_pred, track)
             # depth_loss = depth_loss_fn(depth_pred, depth_target)
@@ -93,7 +93,7 @@ def train(
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
             print(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
-                f"det_metrics={det_metric.compute():.4f} "
+                f"det_metrics={det_metric.compute()} "
             )
 
     # save and overwrite the model in the root directory for grading

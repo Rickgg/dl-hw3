@@ -110,7 +110,7 @@ class Detector(torch.nn.Module):
         self.model = nn.Sequential(*layers)
 
         self.segmentation = nn.Conv2d(16, num_classes, kernel_size=1)
-        self.depth = nn.Conv2d(16, 1, kernel_size=1)
+        self.depth = nn.Sequential(nn.Conv2d(16, 1, kernel_size=1), nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

@@ -64,7 +64,7 @@ def train(
     seg_loss_fn = torch.nn.CrossEntropyLoss().to(device)
     depth_loss_fn = torch.nn.MSELoss().to(device)
 
-    optim = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optim = torch.optim.AdamW(model.parameters(), lr=0.0005)
 
     det_metric = DetectionMetric()
 

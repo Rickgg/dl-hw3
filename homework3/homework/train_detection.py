@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 from pathlib import Path
+from collections import Counter
 
 import numpy as np
 import torch
@@ -10,6 +11,16 @@ from .models import load_model, save_model
 from .datasets.road_dataset import load_data
 from .metrics import DetectionMetric
 
+# def compute_class_weights(dataset, device):
+#     """Compute class weights based on dataset distribution."""
+#     label_counts = Counter()
+#     for batch in DataLoader(dataset, batch_size=1):  # Iterate over dataset
+#         labels = batch["track"].flatten().tolist()
+#         label_counts.update(labels)
+
+#     total = sum(label_counts.values())
+#     weights = {cls: total / count for cls, count in label_counts.items()}  # Inverse frequency
+#     return torch.tensor([weights[i] for i in sorted(weights)], device=device)
 
 def train(
     exp_dir: str = "logs",
@@ -20,6 +31,7 @@ def train(
     seed: int = 2024,
     **kwargs,
 ):
+    torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
@@ -44,10 +56,15 @@ def train(
     train_data = load_data("drive_data/train", shuffle=True, batch_size=batch_size, num_workers=2)
     val_data = load_data("drive_data/val", shuffle=False)
 
+    # class_weights = compute_class_weights(train_data.dataset, device)
+    # print(f"Class Weights: {class_weights}")  # Debugging output
+
+    # Loss functions
+    # seg_loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
     seg_loss_fn = torch.nn.CrossEntropyLoss().to(device)
     depth_loss_fn = torch.nn.MSELoss().to(device)
 
-    optim = torch.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
+    optim = torch.optim.Adam(model.parameters(), lr=0.0001)
 
     det_metric = DetectionMetric()
 
@@ -73,8 +90,8 @@ def train(
             loss_val.backward()
             optim.step()
 
-            seg_predictions, depth_predictions = model.predict(image)
-            det_metric.add(seg_predictions, track, depth_predictions, depth)
+            # seg_predictions, depth_predictions = model.predict(image)
+            # det_metric.add(seg_predictions, track, depth_predictions, depth)
 
             global_step += 1
 
@@ -109,7 +126,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--exp_dir", type=str, default="logs")
     parser.add_argument("--model_name", type=str, default="detector")
-    parser.add_argument("--num_epoch", type=int, default=50)
+    parser.add_argument("--num_epoch", type=int, default=250)
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--seed", type=int, default=2024)
 

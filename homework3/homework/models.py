@@ -83,53 +83,71 @@ class Detector(nn.Module):
     def __init__(self, in_channels: int = 3, num_classes: int = 3):
         super().__init__()
 
-        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
-        self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
+        self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN).view(1, 3, 1, 1))
+        self.register_buffer("input_std", torch.as_tensor(INPUT_STD).view(1, 3, 1, 1))
 
         # Encoder (Downsampling)
         self.enc1 = nn.Sequential(
             nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=False)  # Avoid in-place operation
         )
         self.enc2 = nn.Sequential(
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=False)
         )
         self.enc3 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=False)
         )
 
         # Decoder (Upsampling + Skip Connections)
         self.dec3 = nn.Sequential(
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=False)
         )
         self.dec2 = nn.Sequential(
             nn.ConvTranspose2d(64, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=False)
         )
         self.dec1 = nn.Sequential(
             nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=False)
         )
+
+        # Additional 1x1 convolution layers for skip connections (to match channel dimensions)
+        self.skip1 = nn.Conv2d(16, 16, kernel_size=1)  # Skip connection for enc1
+        self.skip2 = nn.Conv2d(32, 32, kernel_size=1)  # Skip connection for enc2
 
         # Output heads
         self.segmentation = nn.Conv2d(16, num_classes, kernel_size=1)
         self.depth = nn.Sequential(nn.Conv2d(16, 1, kernel_size=1), nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        z = (x - self.input_mean) / self.input_std  # Normalize input
 
         # Encoder
         enc1_out = self.enc1(z)  # (b, 16, h/2, w/2)
         enc2_out = self.enc2(enc1_out)  # (b, 32, h/4, w/4)
-        enc3_out = self.enc3(enc2_out)
+        enc3_out = self.enc3(enc2_out)  # (b, 64, h/8, w/8)
+
+        # Apply skip connections
+        enc1_skip = self.skip1(enc1_out.clone())  # Match dimensions for addition
+        enc2_skip = self.skip2(enc2_out.clone())
 
         # Decoder with skip connections
         dec3_out = self.dec3(enc3_out)  # (b, 32, h/4, w/4)
-        dec2_out = self.dec2(torch.cat([dec3_out, enc2_out], dim=1))  # (b, 16, h/2, w/2)
-        dec1_out = self.dec1(torch.cat([dec2_out, enc1_out], dim=1))
+        dec3_out = dec3_out + nn.functional.interpolate(enc2_skip, size=dec3_out.shape[2:], mode="nearest")  # Resize and add
+
+        dec2_out = self.dec2(torch.cat([dec3_out, nn.functional.interpolate(enc2_out, size=dec3_out.shape[2:], mode="nearest")], dim=1))
+        dec2_out = dec2_out + nn.functional.interpolate(enc1_skip, size=dec2_out.shape[2:], mode="nearest")  # Resize and add
+
+        dec1_out = self.dec1(torch.cat([dec2_out, nn.functional.interpolate(enc1_out, size=dec2_out.shape[2:], mode="nearest")], dim=1))
 
         logits = self.segmentation(dec1_out)
         raw_depth = self.depth(dec1_out).squeeze(1)

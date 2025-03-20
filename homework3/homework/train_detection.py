@@ -11,22 +11,11 @@ from .models import load_model, save_model
 from .datasets.road_dataset import load_data
 from .metrics import DetectionMetric
 
-# def compute_class_weights(dataset, device):
-#     """Compute class weights based on dataset distribution."""
-#     label_counts = Counter()
-#     for batch in DataLoader(dataset, batch_size=1):  # Iterate over dataset
-#         labels = batch["track"].flatten().tolist()
-#         label_counts.update(labels)
-
-#     total = sum(label_counts.values())
-#     weights = {cls: total / count for cls, count in label_counts.items()}  # Inverse frequency
-#     return torch.tensor([weights[i] for i in sorted(weights)], device=device)
-
 def train(
     exp_dir: str = "logs",
     model_name: str = "classifier",
     num_epoch: int = 50,
-    lr: float = 1e-3,
+    lr: float = 0.0005,
     batch_size: int = 128,
     seed: int = 2024,
     **kwargs,
@@ -56,11 +45,6 @@ def train(
     train_data = load_data("drive_data/train", shuffle=True, batch_size=batch_size, num_workers=2)
     val_data = load_data("drive_data/val", shuffle=False)
 
-    # class_weights = compute_class_weights(train_data.dataset, device)
-    # print(f"Class Weights: {class_weights}")  # Debugging output
-
-    # Loss functions
-    # seg_loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
     seg_loss_fn = torch.nn.CrossEntropyLoss().to(device)
     depth_loss_fn = torch.nn.MSELoss().to(device)
 
@@ -79,7 +63,6 @@ def train(
         for batch in train_data:
             image, depth, track = batch["image"].to(device), batch["depth"].to(device), batch["track"].to(device)
 
-            # TODO: implement training step
             seg_pred, depth_pred = model(image)
 
             seg_loss = seg_loss_fn(seg_pred, track)
@@ -89,9 +72,6 @@ def train(
             optim.zero_grad()
             loss_val.backward()
             optim.step()
-
-            # seg_predictions, depth_predictions = model.predict(image)
-            # det_metric.add(seg_predictions, track, depth_predictions, depth)
 
             global_step += 1
 
@@ -129,9 +109,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_epoch", type=int, default=250)
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--seed", type=int, default=2024)
-
-    # optional: additional model hyperparamters
-    # parser.add_argument("--num_layers", type=int, default=3)
 
     # pass all arguments to train
     train(**vars(parser.parse_args()))

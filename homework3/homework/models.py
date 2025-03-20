@@ -80,17 +80,27 @@ class Classifier(nn.Module):
 
 
 class Detector(nn.Module):
-    def __init__(self, in_channels: int = 3, num_classes: int = 3):
+    def __init__(
+        self, 
+        in_channels: int = 3, 
+        num_classes: int = 3
+    ):
+        """
+        A convolutional network for image classification.
+
+        Args:
+            in_channels: int, number of input channels
+            num_classes: int
+        """
         super().__init__()
 
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN).view(1, 3, 1, 1))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD).view(1, 3, 1, 1))
 
-        # Encoder (Downsampling)
         self.enc1 = nn.Sequential(
             nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(16),
-            nn.ReLU(inplace=False)  # Avoid in-place operation
+            nn.ReLU(inplace=False)
         )
         self.enc2 = nn.Sequential(
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
@@ -103,7 +113,6 @@ class Detector(nn.Module):
             nn.ReLU(inplace=False)
         )
 
-        # Decoder (Upsampling + Skip Connections)
         self.dec3 = nn.Sequential(
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.BatchNorm2d(32),
@@ -120,28 +129,30 @@ class Detector(nn.Module):
             nn.ReLU(inplace=False)
         )
 
-        # Additional 1x1 convolution layers for skip connections (to match channel dimensions)
-        self.skip1 = nn.Conv2d(16, 16, kernel_size=1)  # Skip connection for enc1
-        self.skip2 = nn.Conv2d(32, 32, kernel_size=1)  # Skip connection for enc2
+        self.skip1 = nn.Conv2d(16, 16, kernel_size=1)
+        self.skip2 = nn.Conv2d(32, 32, kernel_size=1)
 
-        # Output heads
         self.segmentation = nn.Conv2d(16, num_classes, kernel_size=1)
         self.depth = nn.Sequential(nn.Conv2d(16, 1, kernel_size=1), nn.Sigmoid())
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        z = (x - self.input_mean) / self.input_std  # Normalize input
+        """
+        Args:
+            x: tensor (b, 3, h, w) image
 
-        # Encoder
-        enc1_out = self.enc1(z)  # (b, 16, h/2, w/2)
-        enc2_out = self.enc2(enc1_out)  # (b, 32, h/4, w/4)
-        enc3_out = self.enc3(enc2_out)  # (b, 64, h/8, w/8)
+        Returns:
+            tensor (b, num_classes) logits
+        """
+        z = (x - self.input_mean) / self.input_std
 
-        # Apply skip connections
-        enc1_skip = self.skip1(enc1_out.clone())  # Match dimensions for addition
+        enc1_out = self.enc1(z)
+        enc2_out = self.enc2(enc1_out)
+        enc3_out = self.enc3(enc2_out)
+
+        enc1_skip = self.skip1(enc1_out.clone())
         enc2_skip = self.skip2(enc2_out.clone())
 
-        # Decoder with skip connections
-        dec3_out = self.dec3(enc3_out)  # (b, 32, h/4, w/4)
+        dec3_out = self.dec3(enc3_out)
         dec3_out = dec3_out + nn.functional.interpolate(enc2_skip, size=dec3_out.shape[2:], mode="nearest")  # Resize and add
 
         dec2_out = self.dec2(torch.cat([dec3_out, nn.functional.interpolate(enc2_out, size=dec3_out.shape[2:], mode="nearest")], dim=1))
